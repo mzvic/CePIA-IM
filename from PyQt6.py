@@ -1,39 +1,59 @@
 import sys
-from PyQt6 import QtWidgets, uic
-from PyQt6.QtCore import Qt
+from PyQt6 import QtWidgets, uic, QtCore
+import pyvisa
+import os
 import pyqtgraph as pg
 import time
 import pyvisa
 import os
 
-'''
 # Open RM
 rm = pyvisa.ResourceManager()
 
-#call device connected
-print("Connected VISA resources: ")
-rm.list_resources()
-
-'''
-
+# Obtener la ruta del archivo .ui
 script_directory = os.path.dirname(os.path.abspath(__file__))
 ui_folder = r"/HMI_RRL_3.ui"
 ui_dir = script_directory + ui_folder
 
+class QueryThread(QtCore.QThread):
+    response_received = QtCore.pyqtSignal(str)  # Señal para emitir la respuesta
+
+    def __init__(self, device, command, interval=500, parent=None):
+        super().__init__(parent)
+        self.device = device
+        self.command = command
+        self.interval = interval  # Intervalo de tiempo entre comandos
+        self.running = False
+
+    def run(self):
+        self.running = True
+        while self.running:
+            try:
+                response = self.device.query(self.command)
+                self.response_received.emit(response)
+            except Exception as e:
+                print(f"Error querying device: {e}")
+            self.msleep(self.interval)  
+
+    def stop(self):
+        self.running = False
+        self.wait()
+
 
 class Interfaz(QtWidgets.QMainWindow):
     def __init__(self, parent=None):
-        super(Interfaz,self).__init__(parent)
-        self.ui=uic.loadUi(ui_dir, self)
+        super(Interfaz, self).__init__(parent)
+        self.ui = uic.loadUi(ui_dir, self)
+        self.dmm_device = None
+        self.query_thread = None
 
         # Set Window Title
         self.setWindowTitle("TEMPERATURE CONTROL - LAKESHORE MODEL 336")
 
         # Connection with GUI (.ui)
-        self.ui.c_sp.clicked.connect(self.sp_connection)
         self.ui.c_dmm.clicked.connect(self.dmm_connection)
+        self.ui.c_sp.clicked.connect(self.sp_connection)
         self.ui.c_ls.clicked.connect(self.ls_connection)
-        
         self.ui.volt_set.clicked.connect(self.voltage_set)
 
 
@@ -51,37 +71,29 @@ class Interfaz(QtWidgets.QMainWindow):
         self.PlotWidget1.setYRange(0,50)
 
         self.layout1.addWidget(self.PlotWidget1)
-    
-    # Auxiliar fuctions
-    def query_command(self, device, command):
-            query = device.query(command)
-            print(query)
 
-    def write_command(self, device, command):
-          device.write(command)
-
-    # Device Comunication
     def dmm_connection(self):
         if self.ui.c_dmm.isChecked():
-            
-            #rig_dmm = rm.open_resource('USB0::0x1AB1::0x0588::DM3R153200585::INSTR')
-            #self.write_command(rig_dmm, "*RST") # Reset the instrument
-            #time.sleep(1)
-            #self.write_command(rig_dmm, ":FUNC:CURR:DC") # Set current DC function
-            #self.write_command(rig_dmm, ":CURR:DC:RANG 1A") #Set 1A range
-            #self.write_command(rig_dmm, ":MEAS AUTO") # Set automatic measurameter
-            #time.sleep(1)
+            try:
+                self.dmm_device = rm.open_resource('USB0::0x1AB1::0x0588::DM3R153200585::INSTR')
+                print("Digital MultiMeter Connected!")
 
-            #while True:
-                #meas_dmm = self.query_command(rig_dmm, ":MEAS?")
-                #self.ui.curr_m.setText(meas_dmm)
-                #time.sleep(0.5)
+                command = "*IDN?"  
+                self.query_thread = QueryThread(self.dmm_device, command, interval=500)
+                self.query_thread.response_received.connect(self.response)
+                self.query_thread.start()
 
-            print("Digital MultiMeter Connected!")
+            except Exception as err:
+                print(f"Error connecting to DMM: {err}")
         else:
+            if self.query_thread:
+                self.query_thread.stop()
+            if self.dmm_device:
+                self.dmm_device.close()
+                print("Digital MultiMeter Disconnected!")
 
-            #rig_dmm.close()
-            print("Digital MultiMeter Disconnected!")
+    def response(self, response):
+        print(f"IDN: {response}")
 
     def sp_connection(self):
         if self.ui.c_sp.isChecked():
