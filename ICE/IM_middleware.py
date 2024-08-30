@@ -9,6 +9,7 @@ import time
 
 Ice.loadSlice('IM.ice')
 import Demo
+threading.Thread(target=os.system("/opt/Ice-3.7/bin/icebox --Ice.Config=icebox.cfg")).start()
 
 # Path to UI file
 script_directory = os.path.dirname(os.path.abspath(__file__))
@@ -113,6 +114,7 @@ if __name__ == "__main__":
     with Ice.initialize(sys.argv, "subpub.cfg") as communicator:
 
         # Crea el publicador y suscriptor
+        
         publisher = IcePublisher(communicator)
         subscriber = IceSubscriber(communicator)
         subscriber.start()

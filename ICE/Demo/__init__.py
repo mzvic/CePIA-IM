@@ -5,6 +5,6 @@ import Ice
 Ice.updateModule("Demo")
 
 # Modules:
-import IM_ice
+import ICE.IM_ice as IM_ice
 
 # Submodules:
